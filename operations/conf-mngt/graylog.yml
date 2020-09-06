@@ -1,0 +1,22 @@
+- name: "Apply roles for Graylog servers"
+  hosts: "all"
+  become: True
+
+  vars:
+    # elasticsearch
+    es_version: 6.7.0
+
+    # graylog
+    graylog_version: 3.0
+    graylog_root_password_sha2: "a99c6603fbd84412aeed9a76b05938befa87b6416dcbf0a9a91e685d85c70b02" # echo -n $PASS | shasum -a 256
+    graylog_password_secret: "chepaigh3eenei5shaihahWi"
+    graylog_http_bind_address: "0.0.0.0:9000"
+    graylog_http_publish_uri: "http://{{ inventory_hostname }}:9000/"
+    graylog_http_external_uri: "http://{{ inventory_hostname }}:9000/"
+
+  roles:
+    - role: "elastic.elasticsearch"
+    - role: "graylog2.graylog-ansible-role"
+      tags:
+        - "graylog"
+        - "graylog_servers"

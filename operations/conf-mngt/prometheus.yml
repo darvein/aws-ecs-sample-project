@@ -1,0 +1,62 @@
+---
+- hosts: all
+
+  roles:
+    - cloudalchemy.prometheus
+    - cloudalchemy.grafana
+
+  vars:
+    #inventory_host: 3.95.218.102
+    inventory_host: "{{ ansible_fqdn | default(ansible_host) | default(inventory_hostname) }}"
+    grafana_prometheus_web_listen_address: "{{ inventory_host }}:9090"
+
+    # Grafana
+    grafana_url: 'http://{{ inventory_host }}:{{ grafana_port }}' 
+    grafana_security:
+      admin_user: admin
+      admin_password: ahm1Phaeco4ahzee
+    grafana_datasources:
+      - name: prometheus
+        type: prometheus
+        access: proxy
+        url: 'http://{{ grafana_prometheus_web_listen_address }}'
+        basicAuth: false
+    grafana_dashboards:
+      - dashboard_id: 11074
+        revision_id: 4
+        datasource: prometheus
+
+    # prometheus
+    prometheus_scrape_configs:
+      - job_name: "local"
+        metrics_path: "/metrics"
+        static_configs:
+          - targets:
+            - "localhost:9090"
+      - job_name: 'ec2instances'
+        ec2_sd_configs:
+          - region: us-east-1
+            #access_key: ""
+            #secret_key: ""
+            port: 9100
+            refresh_interval: 10s
+        relabel_configs:
+          - source_labels: [__meta_ec2_tag_Name, __meta_ec2_instance_id]
+            target_label: name
+            regex: "^(.+);(.+)"
+            replacement: "$1($2)"
+          - source_labels: [__meta_ec2_instance_id]
+            target_label: instance
+      - job_name: 'ecscontainers'
+        ec2_sd_configs:
+          - region: us-east-1
+            #access_key: ""
+            #secret_key: ""
+            port: 8080
+            refresh_interval: 10s
+        relabel_configs:
+          - source_labels: [__meta_ec2_tag_Name]
+            regex: 'demoproject.*'
+            action: keep
+          - source_labels: [__meta_ec2_instance_id]
+            target_label: instance

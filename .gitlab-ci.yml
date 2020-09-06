@@ -1,0 +1,73 @@
+#image: docker:latest # doesn't contain python
+image: docker:19.03.8
+
+variables:
+  ECR_API: 082982103746.dkr.ecr.us-east-1.amazonaws.com/api
+  ECR_WEB: 082982103746.dkr.ecr.us-east-1.amazonaws.com/web
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: demoprojectcluster
+  ECS_SVC_WEB: demoproject-web-svc
+  ECS_SVC_API: demoproject-api-svc
+  TASK_DEF_API: api
+  TASK_DEF_WEB: web
+
+services:
+  - docker:dind
+
+before_script:
+  - apk add --no-cache curl jq python py-pip make
+  - pip install awscli
+  - $(aws ecr get-login --no-include-email --region "${AWS_REGION}")
+  - IMAGE_TAG=latest
+    #- IMAGE_TAG="$(echo $CI_COMMIT_SHA | head -c 8)"
+
+stages:
+  - build
+  - deploy
+
+build_web:
+  stage: build
+  only:
+    refs:
+      - master
+  script:
+    - cd node-3tier-app2
+    - make web-build
+    - IMAGE_TAG=$IMAGE_TAG make web-tag
+    - make web-release
+
+build_api:
+  stage: build
+  only:
+    refs:
+      - master
+  script:
+    - cd node-3tier-app2
+    - make api-build
+    - IMAGE_TAG=$IMAGE_TAG make api-tag
+    - make api-release
+
+deploy_web:
+  only:
+    refs:
+      - master
+  stage: deploy
+  script:
+    - TASK_DEF=$(aws ecs describe-task-definition --task-definition "$TASK_DEF_WEB" --region "${AWS_REGION}")
+    - TASK_UPDATED=$(echo $TASK_DEF | python $CI_PROJECT_DIR/node-3tier-app2/update_image.py --image $ECR_WEB:$IMAGE_TAG)
+    - aws ecs register-task-definition --region "${AWS_REGION}" --family "${TASK_DEF_WEB}" --container-definitions "${TASK_UPDATED}"
+    - aws ecs update-service --region "${AWS_REGION}" --cluster "${ECS_CLUSTER}" --service "${ECS_SVC_WEB}"  --task-definition "${TASK_DEF_WEB}"
+
+deploy_api:
+  only:
+    refs:
+      - master
+  stage: deploy
+  script:
+    - TASK_DEF=$(aws ecs describe-task-definition --task-definition "$TASK_DEF_API" --region "${AWS_REGION}")
+    - TASK_UPDATED=$(echo $TASK_DEF | python $CI_PROJECT_DIR/node-3tier-app2/update_image.py --image $ECR_API:$IMAGE_TAG)
+    - aws ecs register-task-definition --region "${AWS_REGION}" --family "${TASK_DEF_API}" --container-definitions "${TASK_UPDATED}"
+    - aws ecs update-service --region "${AWS_REGION}" --cluster "${ECS_CLUSTER}" --service "${ECS_SVC_API}"  --task-definition "${TASK_DEF_API}"
+
+
+
